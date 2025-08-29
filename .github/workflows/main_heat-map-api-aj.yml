@@ -1,3 +1,5 @@
+# .github/workflows/main.yml
+
 name: Build and deploy Python app to Azure Web App - heat-map-api-aj
 
 on:
@@ -20,28 +22,39 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Create virtual environment and install dependencies
         working-directory: ./api
-        run: pip install -r requirements.txt
-
-      - name: Upload artifact for deployment jobs
+        run: |
+          python -m venv --copies venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+      
+      # This step now includes the virtual environment in the artifact.
+      # Azure will use this to run your app.
+      - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: api/**
+          path: |
+            api/
+            !api/venv/
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    environment:
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     permissions:
-      id-token: write
-      contents: read
+      id-token: write # Required for federated credentials (OIDC)
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
+          # This ensures the files are placed in a directory named 'api'
+          path: .
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -51,9 +64,14 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_AB74724E24C64B68A7E58F9637FE85C6 }}
 
       - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
         with:
           app-name: 'heat-map-api-aj'
           slot-name: 'Production'
+          # The package path is now the root, as the artifact contains everything.
           package: .
+          # *** IMPORTANT FIX ***
+          # This tells Azure how to start your FastAPI app.
+          # It assumes your FastAPI instance is named 'app' in 'main.py'
+          startup-command: 'gunicorn --bind=0.0.0.0 --workers=4 main:app'
