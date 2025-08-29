@@ -7,6 +7,10 @@ from typing import List
 
 app = FastAPI()
 
+@app.get("/")
+def root():
+    return {"msg": "Hello from Azure!"}
+
 # Where CSV/JSON files are stored (override in Azure App Settings if you want)
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
